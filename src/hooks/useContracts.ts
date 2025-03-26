@@ -15,7 +15,13 @@ export function useContracts() {
       setError(null)
       const result = await contractStorage.getAll()
       if (result.success && result.data) {
-        setContracts(result.data)
+        // 按收藏状态和更新时间排序
+        const sortedContracts = [...result.data].sort((a, b) => {
+          if (a.isFavorite && !b.isFavorite) return -1
+          if (!a.isFavorite && b.isFavorite) return 1
+          return b.updatedAt - a.updatedAt
+        })
+        setContracts(sortedContracts)
       } else {
         setError(result.message || '加载合约失败')
       }
@@ -48,7 +54,14 @@ export function useContracts() {
 
       const result = await contractStorage.save(newContract)
       if (result.success) {
-        setContracts(prev => [...prev, newContract])
+        setContracts(prev => {
+          const newContracts = [...prev, newContract]
+          return newContracts.sort((a, b) => {
+            if (a.isFavorite && !b.isFavorite) return -1
+            if (!a.isFavorite && b.isFavorite) return 1
+            return b.updatedAt - a.updatedAt
+          })
+        })
         return { success: true, data: newContract }
       } else {
         setError(result.message || '添加合约失败')
@@ -68,14 +81,28 @@ export function useContracts() {
   ) => {
     try {
       setError(null)
-      const result = await contractStorage.update(id, updates)
-      if (result.success && result.data) {
-        setContracts(prev =>
-          prev.map(contract =>
-            contract.id === id ? { ...contract, ...updates, updatedAt: Date.now() } : contract
-          )
-        )
-        return { success: true, data: result.data }
+      const contract = contracts.find(c => c.id === id)
+      if (!contract) {
+        throw new Error('合约不存在')
+      }
+
+      const updatedContract = {
+        ...contract,
+        ...updates,
+        updatedAt: Date.now()
+      }
+
+      const result = await contractStorage.update(id, updatedContract)
+      if (result.success) {
+        setContracts(prev => {
+          const newContracts = prev.map(c => c.id === id ? updatedContract : c)
+          return newContracts.sort((a, b) => {
+            if (a.isFavorite && !b.isFavorite) return -1
+            if (!a.isFavorite && b.isFavorite) return 1
+            return b.updatedAt - a.updatedAt
+          })
+        })
+        return { success: true, data: updatedContract }
       } else {
         setError(result.message || '更新合约失败')
         return { success: false, message: result.message }
@@ -85,7 +112,7 @@ export function useContracts() {
       setError(message)
       return { success: false, message }
     }
-  }, [])
+  }, [contracts])
 
   // 删除合约
   const deleteContract = useCallback(async (id: string) => {
@@ -115,6 +142,36 @@ export function useContracts() {
     return { success: false, message: '合约不存在' }
   }, [contracts, updateContract])
 
+  // 重新排序合约
+  const reorderContracts = useCallback(async (newContracts: ContractConfig[]) => {
+    try {
+      setError(null)
+      // 更新所有合约的顺序
+      const updatePromises = newContracts.map(async (contract, index) => {
+        const updatedContract = {
+          ...contract,
+          updatedAt: Date.now() - index // 使用减法确保顺序正确
+        }
+        return contractStorage.update(contract.id, updatedContract)
+      })
+
+      const results = await Promise.all(updatePromises)
+      const hasError = results.some(result => !result.success)
+
+      if (!hasError) {
+        setContracts(newContracts)
+        return { success: true }
+      } else {
+        setError('重新排序失败')
+        return { success: false, message: '重新排序失败' }
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '未知错误'
+      setError(message)
+      return { success: false, message }
+    }
+  }, [])
+
   // 初始加载
   useEffect(() => {
     loadContracts()
@@ -128,6 +185,7 @@ export function useContracts() {
     updateContract,
     deleteContract,
     toggleFavorite,
+    reorderContracts,
     loadContracts,
   }
 } 
