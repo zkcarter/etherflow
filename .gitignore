@@ -51,3 +51,8 @@ htmlcov/
 *.jpeg
 *.gif
 *.tmp 
+
+# Tools
+tools/
+README_devin.cursorrules.md
+requirements.txt
