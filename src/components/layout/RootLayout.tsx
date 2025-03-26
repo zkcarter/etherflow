@@ -2,6 +2,7 @@ import { ReactNode, useState } from 'react'
 import { Contract } from '../../types/contract'
 import { ContractSidebar } from '../contract/ContractSidebar'
 import { ContractInterface } from '../contract/ContractInterface'
+import { WalletConnect } from '../wallet/WalletConnect'
 
 interface RootLayoutProps {
   children: ReactNode
@@ -52,10 +53,9 @@ export function RootLayout({ children }: RootLayoutProps) {
         <div className="container flex h-16 items-center justify-between">
           <div className="flex items-center gap-4">
             <h1 className="text-xl font-bold">EtherFlow</h1>
-            {/* 网络选择器将在这里 */}
           </div>
           <div className="flex items-center gap-4">
-            {/* 钱包连接按钮将在这里 */}
+            <WalletConnect />
           </div>
         </div>
       </nav>
