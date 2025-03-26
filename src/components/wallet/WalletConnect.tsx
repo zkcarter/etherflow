@@ -2,16 +2,28 @@ import { useAccount, useBalance, useChainId, useConfig } from 'wagmi'
 import { Button } from '../ui/Button'
 import { formatAddress } from '../../utils/format'
 import { useWeb3Modal } from '@web3modal/wagmi/react'
+import { useEffect } from 'react'
 
 export function WalletConnect() {
   const { address, isConnected } = useAccount()
   const { open } = useWeb3Modal()
-  const { data: balance } = useBalance({
-    address,
-  })
   const chainId = useChainId()
   const config = useConfig()
   const currentChain = config.chains.find(x => x.id === chainId)
+
+  // 使用 watch 参数监听余额变化，并设置 5 秒刷新间隔
+  const { data: balance, refetch: refetchBalance } = useBalance({
+    address,
+    watch: true,
+    pollingInterval: 5000,
+  })
+
+  // 在网络切换时重新获取余额
+  useEffect(() => {
+    if (isConnected && address) {
+      refetchBalance()
+    }
+  }, [chainId, address, isConnected, refetchBalance])
 
   if (isConnected && address) {
     return (
