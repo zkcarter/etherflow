@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { formatAddress } from '../../utils/format'
 import { ChevronLeft, ChevronRight, Star, StarOff, Trash2, Edit, Plus, GripVertical } from 'lucide-react'
 import { Button } from '../ui/Button'
@@ -33,25 +33,22 @@ interface ContractSidebarProps {
   onReorder: (contracts: ContractConfig[]) => Promise<void>
 }
 
-interface SortableContractItemProps {
-  contract: ContractConfig
-  isCollapsed: boolean
-  selectedContract?: ContractConfig
-  onSelect: (contract: ContractConfig) => void
-  onToggleFavorite: (contractId: string) => Promise<{ success: boolean; data?: ContractConfig }>
-  onDelete: (contractId: string) => Promise<{ success: boolean }>
-  onEdit: (contract: ContractConfig) => void
-}
-
+// 可排序的合约项组件
 function SortableContractItem({
   contract,
-  isCollapsed,
-  selectedContract,
+  isSelected,
   onSelect,
   onToggleFavorite,
-  onDelete,
   onEdit,
-}: SortableContractItemProps) {
+  onDelete,
+}: {
+  contract: ContractConfig
+  isSelected: boolean
+  onSelect: () => void
+  onToggleFavorite: () => void
+  onEdit: () => void
+  onDelete: () => void
+}) {
   const {
     attributes,
     listeners,
@@ -70,82 +67,47 @@ function SortableContractItem({
       ref={setNodeRef}
       style={style}
       className={`
-        group flex items-center gap-2 p-3 hover:bg-gray-50 border-b border-gray-100 cursor-pointer
-        ${selectedContract?.id === contract.id ? 'bg-gray-50' : ''}
+        flex items-center gap-2 p-4 cursor-pointer
+        ${isSelected ? 'bg-gray-100' : 'hover:bg-gray-50'}
+        border-b border-gray-200
       `}
-      onClick={() => onSelect(contract)}
     >
-      {/* 拖拽手柄 */}
-      <Button
-        variant="ghost"
-        size="sm"
-        className="cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 shrink-0"
-        {...attributes}
-        {...listeners}
-      >
-        <GripVertical size={16} className="text-gray-400" />
-      </Button>
-
-      {/* 收藏图标 */}
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={async (e) => {
-          e.stopPropagation()
-          const result = await onToggleFavorite(contract.id)
-          if (result.success && result.data && selectedContract?.id === contract.id) {
-            onSelect(result.data)
-          }
-        }}
-        className={`shrink-0 ${contract.isFavorite ? '' : 'opacity-0 group-hover:opacity-100'}`}
-      >
-        {contract.isFavorite ? (
-          <Star size={16} className="text-yellow-500 fill-yellow-500" />
-        ) : (
-          <StarOff size={16} className="text-gray-400" />
-        )}
-      </Button>
-
-      {/* 合约信息 */}
-      {!isCollapsed && (
-        <div className="flex-1 min-w-0 overflow-hidden">
-          <div className="font-medium truncate">{contract.name}</div>
-          <div className="text-sm text-gray-500 truncate">
-            {formatAddress(contract.address)}
-          </div>
+      <div {...attributes} {...listeners}>
+        <GripVertical size={20} className="text-gray-400" />
+      </div>
+      <div className="flex-1" onClick={onSelect}>
+        <div className="font-medium">{contract.name}</div>
+        <div className="text-sm text-gray-500">
+          {formatAddress(contract.address)}
         </div>
-      )}
-
-      {/* 操作按钮 */}
-      {!isCollapsed && (
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 shrink-0">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={(e) => {
-              e.stopPropagation()
-              onEdit(contract)
-            }}
-            className="text-gray-400 hover:text-blue-500"
-          >
-            <Edit size={16} />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={async (e) => {
-              e.stopPropagation()
-              const result = await onDelete(contract.id)
-              if (result.success && selectedContract?.id === contract.id) {
-                onSelect(undefined as any)
-              }
-            }}
-            className="text-gray-400 hover:text-red-500"
-          >
-            <Trash2 size={16} />
-          </Button>
-        </div>
-      )}
+      </div>
+      <div className="flex items-center gap-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onToggleFavorite}
+        >
+          {contract.isFavorite ? (
+            <Star size={20} className="text-yellow-400" />
+          ) : (
+            <StarOff size={20} className="text-gray-400" />
+          )}
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onEdit}
+        >
+          <Edit size={20} className="text-gray-400" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onDelete}
+        >
+          <Trash2 size={20} className="text-gray-400" />
+        </Button>
+      </div>
     </div>
   )
 }
@@ -187,30 +149,14 @@ export function ContractSidebar({
     setIsDialogOpen(true)
   }
 
-  // 处理对话框关闭
-  const handleDialogClose = () => {
-    setIsDialogOpen(false)
-    setEditingContract(undefined)
-  }
-
   // 处理合约保存
-  const handleContractSave = async (
-    name: string,
-    address: string,
-    abi: string,
-    description?: string
-  ) => {
+  const handleContractSave = async (contract: { name: string; address: string; abi: string }) => {
     try {
       let result;
       if (editingContract) {
-        result = await onUpdateContract(editingContract.id, {
-          name,
-          address,
-          abi,
-          description,
-        })
+        result = await onUpdateContract(editingContract.id, contract)
       } else {
-        result = await onAddContract(name, address, abi, description)
+        result = await onAddContract(contract.name, contract.address, contract.abi)
       }
 
       if (result.success && result.data) {
@@ -218,7 +164,8 @@ export function ContractSidebar({
           onSelectContract(result.data)
         }
       }
-      handleDialogClose()
+      setIsDialogOpen(false)
+      setEditingContract(undefined)
     } catch (error) {
       console.error('保存合约失败:', error)
       throw error
@@ -247,7 +194,7 @@ export function ContractSidebar({
     <>
       <div className={`
         flex flex-col border-r border-gray-200 bg-white h-full
-        ${isCollapsed ? 'w-16' : ''}
+        ${isCollapsed ? 'w-16' : 'w-80'}
       `}>
         {/* 顶部标题和收缩按钮 */}
         <div className="flex items-center justify-between p-4 border-b border-gray-200">
@@ -263,59 +210,65 @@ export function ContractSidebar({
         </div>
 
         {/* 合约列表 */}
-        <div className="flex-1 overflow-y-auto">
-          <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            onDragEnd={handleDragEnd}
-          >
-            {/* 收藏的合约 */}
-            {favoriteContracts.length > 0 && (
-              <div>
-                <SortableContext
-                  items={favoriteContracts.map(c => c.id)}
-                  strategy={verticalListSortingStrategy}
-                >
-                  {favoriteContracts.map(contract => (
-                    <SortableContractItem
-                      key={contract.id}
-                      contract={contract}
-                      isCollapsed={isCollapsed}
-                      selectedContract={selectedContract}
-                      onSelect={onSelectContract}
-                      onToggleFavorite={onToggleFavorite}
-                      onDelete={onDeleteContract}
-                      onEdit={handleEdit}
-                    />
-                  ))}
-                </SortableContext>
-              </div>
-            )}
+        {!isCollapsed && (
+          <div className="flex-1 overflow-auto">
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              {/* 收藏的合约 */}
+              {favoriteContracts.length > 0 && (
+                <div>
+                  <div className="px-4 py-2 text-sm font-medium text-gray-500 bg-gray-50">
+                    收藏的合约
+                  </div>
+                  <SortableContext
+                    items={favoriteContracts.map(c => c.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    {favoriteContracts.map((contract) => (
+                      <SortableContractItem
+                        key={contract.id}
+                        contract={contract}
+                        isSelected={selectedContract?.id === contract.id}
+                        onSelect={() => onSelectContract(contract)}
+                        onToggleFavorite={() => onToggleFavorite(contract.id)}
+                        onEdit={() => handleEdit(contract)}
+                        onDelete={() => onDeleteContract(contract.id)}
+                      />
+                    ))}
+                  </SortableContext>
+                </div>
+              )}
 
-            {/* 非收藏的合约 */}
-            {nonFavoriteContracts.length > 0 && (
-              <div>
-                <SortableContext
-                  items={nonFavoriteContracts.map(c => c.id)}
-                  strategy={verticalListSortingStrategy}
-                >
-                  {nonFavoriteContracts.map(contract => (
-                    <SortableContractItem
-                      key={contract.id}
-                      contract={contract}
-                      isCollapsed={isCollapsed}
-                      selectedContract={selectedContract}
-                      onSelect={onSelectContract}
-                      onToggleFavorite={onToggleFavorite}
-                      onDelete={onDeleteContract}
-                      onEdit={handleEdit}
-                    />
-                  ))}
-                </SortableContext>
-              </div>
-            )}
-          </DndContext>
-        </div>
+              {/* 其他合约 */}
+              {nonFavoriteContracts.length > 0 && (
+                <div>
+                  <div className="px-4 py-2 text-sm font-medium text-gray-500 bg-gray-50">
+                    其他合约
+                  </div>
+                  <SortableContext
+                    items={nonFavoriteContracts.map(c => c.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    {nonFavoriteContracts.map((contract) => (
+                      <SortableContractItem
+                        key={contract.id}
+                        contract={contract}
+                        isSelected={selectedContract?.id === contract.id}
+                        onSelect={() => onSelectContract(contract)}
+                        onToggleFavorite={() => onToggleFavorite(contract.id)}
+                        onEdit={() => handleEdit(contract)}
+                        onDelete={() => onDeleteContract(contract.id)}
+                      />
+                    ))}
+                  </SortableContext>
+                </div>
+              )}
+            </DndContext>
+          </div>
+        )}
 
         {/* 底部添加按钮 */}
         <div className="p-4 border-t border-gray-200">
@@ -334,10 +287,9 @@ export function ContractSidebar({
 
       {/* 合约表单对话框 */}
       <ContractDialog
-        isOpen={isDialogOpen}
-        onClose={handleDialogClose}
-        contract={editingContract}
-        onSubmit={handleContractSave}
+        open={isDialogOpen}
+        onOpenChange={setIsDialogOpen}
+        onSave={handleContractSave}
       />
     </>
   )

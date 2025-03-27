@@ -1,113 +1,205 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
+import { useAccount, usePublicClient } from 'wagmi'
+import { formatAbiItem } from 'abitype'
 import { ContractConfig } from '../../types/contract'
-import { Search, ChevronDown, ChevronUp } from 'lucide-react'
+import { Input } from '../ui/Input'
+import { Button } from '../ui/Button'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/Tabs'
+import { Search, Filter, Settings } from 'lucide-react'
+import { FunctionForm } from './FunctionForm'
+import { TransactionDetails } from './TransactionDetails'
 
 interface ContractInterfaceProps {
-  mode: 'view'
   contract: ContractConfig
 }
 
-type TabType = 'read' | 'write'
+// ABI 函数类型定义
+type AbiFunction = {
+  name: string
+  type: string
+  stateMutability: string
+  inputs: {
+    name: string
+    type: string
+    components?: any[]
+  }[]
+  outputs?: {
+    name: string
+    type: string
+    components?: any[]
+  }[]
+}
 
-export function ContractInterface({ mode, contract }: ContractInterfaceProps) {
-  const [activeTab, setActiveTab] = useState<TabType>('read')
+export function ContractInterface({ contract }: ContractInterfaceProps) {
+  const { address } = useAccount()
+  const publicClient = usePublicClient()
   const [searchTerm, setSearchTerm] = useState('')
-  const [isAbiExpanded, setIsAbiExpanded] = useState(true)
+  const [selectedFunction, setSelectedFunction] = useState<AbiFunction | null>(null)
+  const [activeTransaction, setActiveTransaction] = useState<`0x${string}` | undefined>()
 
-  const formatAddress = (address: string) => {
-    if (!address) return ''
-    const addr = address.startsWith('0x') ? address : `0x${address}`
-    return `${addr.slice(0, 6)}...${addr.slice(-4)}`
+  // 解析 ABI
+  const parsedAbi = useMemo(() => {
+    try {
+      const parsed = JSON.parse(contract.abi)
+      // 确保解析后的结果是数组
+      return Array.isArray(parsed) ? parsed : []
+    } catch (e) {
+      console.error('ABI 解析错误:', e)
+      return []
+    }
+  }, [contract.abi])
+
+  // 过滤函数
+  const functions = useMemo(() => {
+    return parsedAbi.filter((item: any) => {
+      if (!item || typeof item !== 'object') return false
+      return item.type === 'function' &&
+        item.name &&
+        item.name.toLowerCase().includes(searchTerm.toLowerCase())
+    })
+  }, [parsedAbi, searchTerm])
+
+  // 分类函数
+  const { readFunctions, writeFunctions } = useMemo(() => {
+    return functions.reduce((acc: { readFunctions: AbiFunction[], writeFunctions: AbiFunction[] }, func: AbiFunction) => {
+      if (!func.stateMutability) return acc
+      if (['view', 'pure'].includes(func.stateMutability)) {
+        acc.readFunctions.push(func)
+      } else {
+        acc.writeFunctions.push(func)
+      }
+      return acc
+    }, { readFunctions: [], writeFunctions: [] })
+  }, [functions])
+
+  // 处理函数选择
+  const handleFunctionSelect = (func: AbiFunction) => {
+    setSelectedFunction(func)
+    setActiveTransaction(undefined) // 清除之前的交易状态
   }
 
   return (
-    <div className="space-y-8">
-      {/* 合约信息显示 */}
-      <div className="flex items-center gap-8 rounded-lg border bg-card p-6">
-        <div className="flex flex-col">
-          <span className="text-sm text-muted-foreground">合约名称</span>
-          <span className="font-medium">{contract.name}</span>
-        </div>
-        <div className="flex flex-col">
-          <span className="text-sm text-muted-foreground">合约地址</span>
-          <span className="font-medium">{formatAddress(contract.address)}</span>
+    <div className="flex h-full">
+      {/* 左侧函数列表 */}
+      <div className="w-1/3 border-r border-gray-200">
+        <div className="flex flex-col h-full">
+          {/* 顶部搜索栏 */}
+          <div className="p-4 border-b border-gray-200">
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+                <Input
+                  type="text"
+                  placeholder="搜索函数..."
+                  value={searchTerm}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchTerm(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              <Button variant="outline" size="sm">
+                <Filter size={20} />
+              </Button>
+              <Button variant="outline" size="sm">
+                <Settings size={20} />
+              </Button>
+            </div>
+          </div>
+
+          {/* 函数列表 */}
+          <div className="flex-1 overflow-hidden">
+            <Tabs defaultValue="read" className="h-full">
+              <div className="border-b border-gray-200">
+                <TabsList className="px-4">
+                  <TabsTrigger value="read">
+                    读操作 ({readFunctions.length})
+                  </TabsTrigger>
+                  <TabsTrigger value="write">
+                    写操作 ({writeFunctions.length})
+                  </TabsTrigger>
+                </TabsList>
+              </div>
+
+              <div className="h-[calc(100%-48px)] overflow-auto">
+                <TabsContent value="read" className="p-0 m-0">
+                  <div className="divide-y divide-gray-100">
+                    {readFunctions.map((func: AbiFunction) => (
+                      <div
+                        key={func.name}
+                        className={`
+                          p-4 hover:bg-gray-50 cursor-pointer
+                          ${selectedFunction?.name === func.name ? 'bg-gray-50' : ''}
+                        `}
+                        onClick={() => handleFunctionSelect(func)}
+                      >
+                        <div className="font-medium">{func.name}</div>
+                        <div className="text-sm text-gray-500">
+                          {formatAbiItem(func as any)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="write" className="p-0 m-0">
+                  <div className="divide-y divide-gray-100">
+                    {writeFunctions.map((func: AbiFunction) => (
+                      <div
+                        key={func.name}
+                        className={`
+                          p-4 hover:bg-gray-50 cursor-pointer
+                          ${selectedFunction?.name === func.name ? 'bg-gray-50' : ''}
+                        `}
+                        onClick={() => handleFunctionSelect(func)}
+                      >
+                        <div className="font-medium">{func.name}</div>
+                        <div className="text-sm text-gray-500">
+                          {formatAbiItem(func as any)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </TabsContent>
+              </div>
+            </Tabs>
+          </div>
         </div>
       </div>
 
-      {/* ABI 显示 */}
-      <div className="rounded-lg border bg-card">
-        <div 
-          className="flex cursor-pointer items-center justify-between border-b p-4 hover:bg-accent/50"
-          onClick={() => setIsAbiExpanded(!isAbiExpanded)}
-        >
-          <div className="flex items-center gap-2">
-            <h2 className="text-lg font-semibold">ABI</h2>
-            <span className="text-sm text-muted-foreground">
-              {contract.abi ? '已配置' : '未配置'}
-            </span>
+      {/* 右侧函数调用区域 */}
+      <div className="flex-1 p-6">
+        {selectedFunction ? (
+          <div className="space-y-6">
+            {/* 函数信息 */}
+            <div>
+              <h2 className="text-xl font-semibold">{selectedFunction.name}</h2>
+              <p className="text-sm text-gray-500">
+                {formatAbiItem(selectedFunction as any)}
+              </p>
+            </div>
+
+            {/* 函数调用表单 */}
+            <FunctionForm
+              contractAddress={contract.address}
+              abi={parsedAbi}
+              functionName={selectedFunction.name}
+              inputs={selectedFunction.inputs}
+              outputs={selectedFunction.outputs}
+              stateMutability={selectedFunction.stateMutability}
+            />
+
+            {/* 交易详情 */}
+            {activeTransaction && (
+              <TransactionDetails
+                hash={activeTransaction}
+                onClose={() => setActiveTransaction(undefined)}
+              />
+            )}
           </div>
-          <button
-            className="rounded p-1 hover:bg-accent"
-            title={isAbiExpanded ? '收起' : '展开'}
-          >
-            {isAbiExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-          </button>
-        </div>
-        {isAbiExpanded && (
-          <div className="space-y-4 p-4">
-            <pre className="overflow-auto rounded-md bg-gray-50 p-4 text-sm">
-              {contract.abi}
-            </pre>
+        ) : (
+          <div className="flex h-full items-center justify-center text-gray-500">
+            请选择要调用的函数
           </div>
         )}
-      </div>
-
-      {/* 合约接口列表 */}
-      <div className="rounded-lg border bg-card">
-        {/* 搜索框 */}
-        <div className="border-b p-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="搜索合约函数..."
-              className="w-full rounded-md border bg-background pl-9 pr-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            />
-          </div>
-        </div>
-
-        {/* Tab 按钮 */}
-        <div className="flex border-b">
-          <button
-            onClick={() => setActiveTab('read')}
-            className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
-              activeTab === 'read'
-                ? 'border-b-2 border-primary text-primary'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            读操作
-          </button>
-          <button
-            onClick={() => setActiveTab('write')}
-            className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
-              activeTab === 'write'
-                ? 'border-b-2 border-primary text-primary'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            写操作
-          </button>
-        </div>
-
-        {/* 函数列表 */}
-        <div className="p-6">
-          <div className="rounded-md border bg-muted/50 p-4 text-sm text-muted-foreground">
-            暂无{activeTab === 'read' ? '读' : '写'}操作函数
-          </div>
-        </div>
       </div>
     </div>
   )
