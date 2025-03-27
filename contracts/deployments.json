@@ -1,0 +1,6 @@
+{
+  "sepolia": {
+    "TestToken": "0x33eF8De33633311f614D7039BdC3778Df14B5bF9",
+    "ComplexContract": "0x90FbA68D9dCd4Ad9283057c3b848C9DEf6103536"
+  }
+} 
